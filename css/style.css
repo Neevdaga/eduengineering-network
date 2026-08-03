@@ -189,3 +189,10 @@ th{
 }
 td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top;}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;}
+.tabs{display:flex;gap:8px;}
+.tab-btn{
+  font-family:'IBM Plex Mono';font-size:.82rem;text-transform:uppercase;letter-spacing:.04em;
+  padding:8px 16px;border:1px solid var(--line);border-radius:3px;background:#fff;color:#7a7f87;
+  cursor:pointer;
+}
+.tab-btn.active{background:var(--ink);color:var(--paper);border-color:var(--ink);}

@@ -12,6 +12,7 @@
   <a href="index.html" class="brand"><span class="mark"><span>E</span></span> EduEngineering</a>
   <div class="navlinks">
     <span class="muted mono" id="schoolNameNav"></span>
+    <a href="master.html" id="masterLink" class="hidden">Network admin</a>
     <a href="#" onclick="logout(); return false;">Log out</a>
   </div>
 </nav>
@@ -83,6 +84,11 @@ async function init() {
   }
   school = schools[0];
   document.getElementById("schoolNameNav").textContent = school.name;
+
+  const { data: cfg } = await supabaseClient.from("app_config").select("value").eq("key","master_admin_email").maybeSingle();
+  if (cfg && cfg.value === session.user.email) {
+    document.getElementById("masterLink").classList.remove("hidden");
+  }
 
   if (school.status === "pending") {
     document.getElementById("pendingBanner").classList.remove("hidden");

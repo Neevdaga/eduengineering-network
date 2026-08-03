@@ -34,7 +34,7 @@
       <h3 style="margin:0;">Approved teams (<span id="approvedCount">0</span>)</h3>
     </div>
     <table id="approvedTable">
-      <thead><tr><th>School / team</th><th>Contact</th><th>Requests</th><th>Registered</th></tr></thead>
+      <thead><tr><th>School / team</th><th>Contact</th><th>Requests</th><th>Registered</th><th>Actions</th></tr></thead>
       <tbody id="approvedBody"></tbody>
     </table>
   </div>
@@ -98,15 +98,29 @@ async function loadSchools() {
       <td>${escapeHtml(s.contact_name||"")}<br><span class="muted">${escapeHtml(s.contact_email||"")}</span></td>
       <td>${countBySchool[s.id] || 0}</td>
       <td>${formatDate(s.created_at.slice(0,10))}</td>
+      <td style="display:flex;gap:8px;">
+        <button class="btn btn-outline btn-sm" data-action="revoke" data-id="${s.id}">Revoke</button>
+        <button class="btn btn-danger btn-sm" data-action="delete" data-id="${s.id}" data-name="${escapeHtml(s.name)}">Delete</button>
+      </td>
     </tr>
   `).join("");
 
   document.querySelectorAll("[data-action]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
-      const status = btn.dataset.action === "approve" ? "approved" : "denied";
+      const action = btn.dataset.action;
       btn.disabled = true;
-      await supabaseClient.from("schools").update({ status }).eq("id", id);
+      if (action === "approve") {
+        await supabaseClient.from("schools").update({ status: "approved" }).eq("id", id);
+      } else if (action === "deny") {
+        await supabaseClient.from("schools").update({ status: "denied" }).eq("id", id);
+      } else if (action === "revoke") {
+        if (!confirm("Revoke approval for this team? Their dashboard and request form will go offline until re-approved.")) { btn.disabled = false; return; }
+        await supabaseClient.from("schools").update({ status: "pending" }).eq("id", id);
+      } else if (action === "delete") {
+        if (!confirm(`Permanently delete "${btn.dataset.name}"? This also deletes all of their requests. This can't be undone.`)) { btn.disabled = false; return; }
+        await supabaseClient.from("schools").delete().eq("id", id);
+      }
       await loadSchools();
     });
   });

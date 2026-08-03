@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submit a request — EduEngineering</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand"><span class="mark"><span>E</span></span> EduEngineering</a>
+</nav>
+
+<section class="wrap-narrow" style="padding-top:10px;">
+  <div class="eyebrow mono" style="color:var(--orange-dark)">Build / fix / create request</div>
+  <h2 id="pageTitle">Request something built or fixed</h2>
+  <p class="muted" style="margin-bottom:28px;">Request anything you need built, fixed, or created — students will reach out to confirm it's within the team's capacity. All projects are done for free.</p>
+
+  <div id="msg" class="msg hidden"></div>
+  <div id="successState" class="hidden" style="text-align:center;padding:40px 0;">
+    <h3>Request sent!</h3>
+    <p class="muted">The team will reach out using the contact info you provided.</p>
+  </div>
+
+  <form id="requestForm" class="form-panel">
+    <div class="field" id="schoolPickerField">
+      <label>School / team</label>
+      <select id="schoolPicker" required></select>
+    </div>
+    <div class="field">
+      <label>Your name</label>
+      <input type="text" id="requesterName" required>
+    </div>
+    <div class="field">
+      <label>Preferred contact (email, phone, or room #)</label>
+      <input type="text" id="contact" required>
+    </div>
+    <div class="field">
+      <label>What do you need?</label>
+      <textarea id="itemRequest" required></textarea>
+    </div>
+    <div class="field">
+      <label>Needed by (optional)</label>
+      <input type="date" id="neededBy">
+    </div>
+    <button type="submit" class="btn btn-primary btn-full" id="submitBtn">Submit request →</button>
+  </form>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+<script>
+let selectedSchoolId = null;
+const params = new URLSearchParams(window.location.search);
+const slugParam = params.get("school");
+
+async function init() {
+  const { data: schools, error } = await supabaseClient
+    .from("schools")
+    .select("id,name,slug")
+    .eq("status", "approved")
+    .order("name");
+
+  if (error || !schools || schools.length === 0) {
+    document.getElementById("requestForm").innerHTML = "<p class='muted'>No teams are currently accepting requests.</p>";
+    return;
+  }
+
+  if (slugParam) {
+    const match = schools.find(s => s.slug === slugParam);
+    if (match) {
+      selectedSchoolId = match.id;
+      document.getElementById("pageTitle").textContent = `Request something from ${match.name}`;
+      document.getElementById("schoolPickerField").classList.add("hidden");
+      document.getElementById("schoolPicker").required = false;
+      return;
+    }
+  }
+
+  const picker = document.getElementById("schoolPicker");
+  picker.innerHTML = `<option value="">Select a school…</option>` + schools.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+}
+
+document.getElementById("requestForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const submitBtn = document.getElementById("submitBtn");
+  const msg = document.getElementById("msg");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Sending…";
+
+  const schoolId = selectedSchoolId || document.getElementById("schoolPicker").value;
+  if (!schoolId) {
+    showMsg(msg, "Please select a school.", "error");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit request →";
+    return;
+  }
+
+  const payload = {
+    school_id: schoolId,
+    requester_name: document.getElementById("requesterName").value.trim(),
+    contact: document.getElementById("contact").value.trim(),
+    item_request: document.getElementById("itemRequest").value.trim(),
+    needed_by: document.getElementById("neededBy").value || null,
+  };
+
+  const { error } = await supabaseClient.from("requests").insert(payload);
+  if (error) {
+    showMsg(msg, "Something went wrong. Please try again.", "error");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit request →";
+    return;
+  }
+
+  document.getElementById("requestForm").classList.add("hidden");
+  document.getElementById("successState").classList.remove("hidden");
+});
+
+init();
+</script>
+</body>
+</html>

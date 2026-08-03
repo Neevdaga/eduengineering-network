@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — EduEngineering</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand"><span class="mark"><span>E</span></span> EduEngineering</a>
+  <div class="navlinks">
+    <span class="muted mono" id="schoolNameNav"></span>
+    <a href="#" onclick="logout(); return false;">Log out</a>
+  </div>
+</nav>
+
+<section class="wrap" style="padding-top:10px;">
+
+  <div id="pendingBanner" class="msg msg-error hidden" style="max-width:680px;">
+    Your team is <strong>pending review</strong>. A network admin needs to approve your account before your public request form goes live and requests start coming in. This usually takes a day or two.
+  </div>
+
+  <div id="deniedBanner" class="msg msg-error hidden" style="max-width:680px;">
+    This registration wasn't approved. If you think that's a mistake, email <a href="mailto:neevdaga@gmail.com">neevdaga@gmail.com</a>.
+  </div>
+
+  <div id="approvedContent" class="hidden">
+    <div class="toolbar">
+      <div>
+        <div class="eyebrow mono" style="color:var(--orange-dark)">Your dashboard</div>
+        <h2 style="margin:0;" id="schoolNameHeading">—</h2>
+      </div>
+      <div>
+        <a href="#" id="copyLinkBtn" class="btn btn-outline btn-sm">Copy request-form link</a>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom:36px;">
+      <div class="card"><span class="stat" id="statNew">0</span><div class="stat-label">New requests</div></div>
+      <div class="card"><span class="stat" id="statProgress">0</span><div class="stat-label">In progress</div></div>
+      <div class="card"><span class="stat" id="statDone">0</span><div class="stat-label">Completed</div></div>
+    </div>
+
+    <div class="toolbar">
+      <h3 style="margin:0;">Requests</h3>
+      <select id="filterStatus" class="field" style="width:auto;padding:8px 12px;border:1px solid var(--line);border-radius:3px;">
+        <option value="all">All statuses</option>
+        <option value="new">New</option>
+        <option value="in_progress">In progress</option>
+        <option value="done">Done</option>
+        <option value="declined">Declined</option>
+      </select>
+    </div>
+
+    <div id="requestList"></div>
+    <p id="emptyState" class="muted hidden">No requests yet — share your request-form link with teachers and staff to get started.</p>
+  </div>
+
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+<script>
+let school = null;
+let allRequests = [];
+
+async function init() {
+  const session = await requireAuth();
+  if (!session) return;
+
+  const { data: schools, error } = await supabaseClient
+    .from("schools")
+    .select("*")
+    .eq("owner_id", session.user.id)
+    .limit(1);
+
+  if (error || !schools || schools.length === 0) {
+    document.querySelector("section").innerHTML = "<p>No team found for this account. Email neevdaga@gmail.com for help.</p>";
+    return;
+  }
+  school = schools[0];
+  document.getElementById("schoolNameNav").textContent = school.name;
+
+  if (school.status === "pending") {
+    document.getElementById("pendingBanner").classList.remove("hidden");
+    return;
+  }
+  if (school.status === "denied") {
+    document.getElementById("deniedBanner").classList.remove("hidden");
+    return;
+  }
+
+  document.getElementById("approvedContent").classList.remove("hidden");
+  document.getElementById("schoolNameHeading").textContent = school.name;
+
+  const formUrl = `${window.location.origin}${window.location.pathname.replace("dashboard.html","")}request.html?school=${school.slug}`;
+  document.getElementById("copyLinkBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    navigator.clipboard.writeText(formUrl);
+    document.getElementById("copyLinkBtn").textContent = "Copied!";
+    setTimeout(() => document.getElementById("copyLinkBtn").textContent = "Copy request-form link", 1500);
+  });
+
+  await loadRequests();
+  document.getElementById("filterStatus").addEventListener("change", renderRequests);
+}
+
+async function loadRequests() {
+  const { data, error } = await supabaseClient
+    .from("requests")
+    .select("*")
+    .eq("school_id", school.id)
+    .order("created_at", { ascending: false });
+  if (!error) allRequests = data;
+  renderStats();
+  renderRequests();
+}
+
+function renderStats() {
+  document.getElementById("statNew").textContent = allRequests.filter(r=>r.status==="new").length;
+  document.getElementById("statProgress").textContent = allRequests.filter(r=>r.status==="in_progress").length;
+  document.getElementById("statDone").textContent = allRequests.filter(r=>r.status==="done").length;
+}
+
+function renderRequests() {
+  const filter = document.getElementById("filterStatus").value;
+  const list = filter === "all" ? allRequests : allRequests.filter(r => r.status === filter);
+  const container = document.getElementById("requestList");
+  const empty = document.getElementById("emptyState");
+
+  if (list.length === 0) {
+    container.innerHTML = "";
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+
+  container.innerHTML = list.map(r => `
+    <div class="ticket" style="margin-bottom:14px;">
+      <div>
+        <h4>${escapeHtml(r.item_request)}</h4>
+        <div class="meta">
+          <span>Requested by ${escapeHtml(r.requester_name)}</span>
+          <span>Contact: ${escapeHtml(r.contact)}</span>
+          <span>Needed by ${formatDate(r.needed_by)}</span>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <span class="status-badge status-${r.status}">${statusLabel(r.status)}</span>
+        <div style="margin-top:10px;">
+          <select class="statusSelect mono" data-id="${r.id}" style="font-size:.78rem;padding:5px 8px;border:1px solid var(--line);border-radius:3px;">
+            <option value="new" ${r.status==="new"?"selected":""}>New</option>
+            <option value="in_progress" ${r.status==="in_progress"?"selected":""}>In progress</option>
+            <option value="done" ${r.status==="done"?"selected":""}>Done</option>
+            <option value="declined" ${r.status==="declined"?"selected":""}>Declined</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  document.querySelectorAll(".statusSelect").forEach(sel => {
+    sel.addEventListener("change", async (e) => {
+      const id = e.target.dataset.id;
+      const newStatus = e.target.value;
+      await supabaseClient.from("requests").update({ status: newStatus }).eq("id", id);
+      await loadRequests();
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>

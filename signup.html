@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Register your team — EduEngineering</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand"><span class="mark"><span>E</span></span> EduEngineering</a>
+  <div class="navlinks">
+    <a href="login.html">Admin login</a>
+  </div>
+</nav>
+
+<section class="wrap-narrow" style="padding-top:20px;">
+  <div class="eyebrow mono" style="color:var(--orange-dark)">Register</div>
+  <h2>Set up your team's account</h2>
+  <p class="muted" style="margin-bottom:28px;">You'll be able to log in right away, but your dashboard stays in <strong>pending review</strong> until a network admin approves your team — usually within a day or two.</p>
+
+  <div id="msg" class="msg hidden"></div>
+
+  <form id="signupForm" class="form-panel">
+    <div class="field">
+      <label>School / team name</label>
+      <input type="text" id="schoolName" placeholder="e.g. Rancho Bernardo High School — Team Σ-Motion" required>
+    </div>
+    <div class="field">
+      <label>Your name</label>
+      <input type="text" id="contactName" required>
+    </div>
+    <div class="field">
+      <label>Email (this is your login)</label>
+      <input type="email" id="email" required>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="password" minlength="6" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-full" id="submitBtn">Create account →</button>
+  </form>
+  <p class="muted" style="margin-top:16px;">Already registered? <a href="login.html">Log in</a></p>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+<script>
+const form = document.getElementById("signupForm");
+const msg = document.getElementById("msg");
+const submitBtn = document.getElementById("submitBtn");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Creating account…";
+
+  const schoolName = document.getElementById("schoolName").value.trim();
+  const contactName = document.getElementById("contactName").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const baseSlug = slugify(schoolName);
+
+  try {
+    const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
+    if (signUpError) throw signUpError;
+
+    // If email confirmations are ON in Supabase, there's no session yet — sign in explicitly.
+    let session = signUpData.session;
+    if (!session) {
+      const { data: signInData, error: signInError } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (signInError) throw new Error("Account created — check your email to confirm it, then log in.");
+      session = signInData.session;
+    }
+
+    // Try the base slug, and a couple of fallback variants if it's taken.
+    let slug = baseSlug;
+    let inserted = null, lastErr = null;
+    for (let i = 0; i < 5; i++) {
+      const trySlug = i === 0 ? slug : `${slug}-${Math.floor(Math.random()*900+100)}`;
+      const { data, error } = await supabaseClient
+        .from("schools")
+        .insert({ name: schoolName, slug: trySlug, contact_name: contactName, contact_email: email, owner_id: session.user.id })
+        .select()
+        .single();
+      if (!error) { inserted = data; break; }
+      lastErr = error;
+    }
+    if (!inserted) throw lastErr;
+
+    window.location.href = "dashboard.html";
+  } catch (err) {
+    showMsg(msg, err.message || "Something went wrong. Please try again.", "error");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Create account →";
+  }
+});
+</script>
+</body>
+</html>

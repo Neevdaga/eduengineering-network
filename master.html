@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Admin — EduEngineering</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="brand"><span class="mark"><span>E</span></span> EduEngineering</a>
+  <div class="navlinks">
+    <span class="muted mono">Network admin</span>
+    <a href="#" onclick="logout(); return false;">Log out</a>
+  </div>
+</nav>
+
+<section class="wrap" style="padding-top:10px;">
+  <div class="eyebrow mono" style="color:var(--orange-dark)">Network admin</div>
+  <h2>All registered teams</h2>
+  <p class="muted" style="margin-bottom:32px;">You're seeing this because your login matches the network admin email in <code class="mono">app_config</code>. Approve a team to unlock their dashboard and public request form.</p>
+
+  <div id="deniedNotice" class="msg msg-error hidden">This login isn't set as the network admin. <a href="dashboard.html">Go to your team dashboard instead →</a></div>
+
+  <div id="content" class="hidden">
+    <div class="toolbar">
+      <h3 style="margin:0;">Pending review (<span id="pendingCount">0</span>)</h3>
+    </div>
+    <div id="pendingList" style="margin-bottom:44px;"></div>
+
+    <div class="toolbar">
+      <h3 style="margin:0;">Approved teams (<span id="approvedCount">0</span>)</h3>
+    </div>
+    <table id="approvedTable">
+      <thead><tr><th>School / team</th><th>Contact</th><th>Requests</th><th>Registered</th></tr></thead>
+      <tbody id="approvedBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+<script>
+async function init() {
+  const session = await requireAuth();
+  if (!session) return;
+
+  const { data: cfg } = await supabaseClient.from("app_config").select("value").eq("key","master_admin_email").maybeSingle();
+  if (!cfg || cfg.value !== session.user.email) {
+    document.getElementById("deniedNotice").classList.remove("hidden");
+    return;
+  }
+  document.getElementById("content").classList.remove("hidden");
+
+  await loadSchools();
+}
+
+async function loadSchools() {
+  const { data: schools, error } = await supabaseClient.from("schools").select("*").order("created_at", { ascending: false });
+  if (error) { console.error(error); return; }
+
+  const pending = schools.filter(s => s.status === "pending");
+  const approved = schools.filter(s => s.status === "approved");
+
+  document.getElementById("pendingCount").textContent = pending.length;
+  document.getElementById("approvedCount").textContent = approved.length;
+
+  const pendingList = document.getElementById("pendingList");
+  pendingList.innerHTML = pending.length === 0
+    ? `<p class="muted">Nothing waiting on review.</p>`
+    : pending.map(s => `
+      <div class="ticket" style="margin-bottom:14px;">
+        <div>
+          <h4>${escapeHtml(s.name)}</h4>
+          <div class="meta">
+            <span>${escapeHtml(s.contact_name || "")}</span>
+            <span>${escapeHtml(s.contact_email || "")}</span>
+            <span>Registered ${formatDate(s.created_at.slice(0,10))}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" data-action="approve" data-id="${s.id}">Approve</button>
+          <button class="btn btn-danger btn-sm" data-action="deny" data-id="${s.id}">Deny</button>
+        </div>
+      </div>
+    `).join("");
+
+  const { data: allRequests } = await supabaseClient.from("requests").select("school_id");
+  const countBySchool = {};
+  (allRequests || []).forEach(r => countBySchool[r.school_id] = (countBySchool[r.school_id]||0) + 1);
+
+  document.getElementById("approvedBody").innerHTML = approved.map(s => `
+    <tr>
+      <td><strong>${escapeHtml(s.name)}</strong><div class="muted mono" style="font-size:.75rem;">/${escapeHtml(s.slug)}</div></td>
+      <td>${escapeHtml(s.contact_name||"")}<br><span class="muted">${escapeHtml(s.contact_email||"")}</span></td>
+      <td>${countBySchool[s.id] || 0}</td>
+      <td>${formatDate(s.created_at.slice(0,10))}</td>
+    </tr>
+  `).join("");
+
+  document.querySelectorAll("[data-action]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const status = btn.dataset.action === "approve" ? "approved" : "denied";
+      btn.disabled = true;
+      await supabaseClient.from("schools").update({ status }).eq("id", id);
+      await loadSchools();
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>
